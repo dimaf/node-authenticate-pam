@@ -142,23 +142,10 @@ NAN_METHOD(Authenticate) {
 	uv_work_t* req = new uv_work_t;
 	struct auth_context* m = new auth_context;
 
-	if(info.Length() == 4 && !info[3]->IsUndefined()) {
-		Local<Array> options = Local<Array>::Cast(info[3]);
-		Local<Value> res = options->Get(Nan::New<String>("serviceName").ToLocalChecked());
-		if(! res->IsUndefined()) {
-			Local<String> serviceName = Local<String>::Cast(res);
-			serviceName->WriteUtf8(m->serviceName, sizeof(m->serviceName) - 1);
-		}
-		res = options->Get(Nan::New<String>("remoteHost").ToLocalChecked());
-		if(! res->IsUndefined()) {
-			Local<String> remoteHost = Local<String>::Cast(res);
-			remoteHost->WriteUtf8(m->remoteHost, sizeof(m->remoteHost) - 1);
-		}
-	}
 	m->callback.Reset(callback);
 
-	username->WriteUtf8(m->username, sizeof(m->username) - 1);
-	password->WriteUtf8(m->password, sizeof(m->password) - 1);
+	username->WriteUtf8(v8::Isolate::GetCurrent(),m->username, sizeof(m->username) - 1);
+	password->WriteUtf8(v8::Isolate::GetCurrent(),m->password, sizeof(m->password) - 1);
 
 	req->data = m;
 
@@ -168,8 +155,13 @@ NAN_METHOD(Authenticate) {
 }
 
 void init(Handle<Object> exports) {
-	Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(Authenticate);
-	exports->Set(Nan::New<String>("authenticate").ToLocalChecked(), tpl->GetFunction());
+	v8::Local<v8::Context> context =
+      exports->GetCreationContext().ToLocalChecked();
+      exports->Set(context,
+               Nan::New("authenticate").ToLocalChecked(),
+               Nan::New<v8::FunctionTemplate>(Authenticate)
+                   ->GetFunction(context)
+                   .ToLocalChecked());
 }
 
 NODE_MODULE(authenticate_pam, init);
