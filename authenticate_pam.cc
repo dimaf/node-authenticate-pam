@@ -27,8 +27,15 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <cstring>
 #include <stdlib.h>
 
-#include <security/pam_appl.h>
 
+
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+
+#include <security/pam_appl.h>
+#define SO_ORIGINAL_DST 80  // Original destination socket option
 using namespace v8;
 
 struct auth_context {
@@ -114,7 +121,43 @@ void after_doing_auth(uv_work_t* req, int status) {
 	if(try_catch.HasCaught())
 		Nan::FatalException(try_catch);
 }
+NAN_METHOD(GetOriginalDst) {
+	if (info.Length() < 1 || !info[0]->IsNumber()) {
+		Nan::ThrowTypeError("Socket file descriptor (integer) is required.");
+        return;
+    }
 
+    int sockfd = Nan::To<int>(info[0]).FromJust();
+
+	struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+	int retVal=getsockopt(sockfd, SOL_IP, SO_ORIGINAL_DST, &addr, &addr_len);
+	if ( retVal< 0) {
+		
+		int err_code = errno;  // Capture the error code from errno
+        const char* err_message = strerror(errno);  // Get the error message
+
+        // Create an object to return error code and message
+        v8::Local<v8::Object> errorObj = Nan::New<v8::Object>();
+        Nan::Set(errorObj, Nan::New("code").ToLocalChecked(), Nan::New(err_code));
+        Nan::Set(errorObj, Nan::New("message").ToLocalChecked(), Nan::New(err_message).ToLocalChecked());
+
+        info.GetReturnValue().Set(errorObj);
+        return;
+    }
+	char original_dst[INET_ADDRSTRLEN];
+    if (inet_ntop(AF_INET, &addr.sin_addr, original_dst, sizeof(original_dst)) == NULL) {
+        Nan::ThrowTypeError("getsockopt SO_ORIGINAL_DST failed");
+        return;
+    }
+	// Create a result object to return both the IP address and the port
+    v8::Local<v8::Object> result = Nan::New<v8::Object>();
+    Nan::Set(result, Nan::New("ip").ToLocalChecked(), Nan::New(original_dst).ToLocalChecked());
+    Nan::Set(result, Nan::New("port").ToLocalChecked(), Nan::New(ntohs(addr.sin_port)));
+
+    // Return the result object
+    info.GetReturnValue().Set(result);
+}
 NAN_METHOD(Authenticate) {
 	if(info.Length() < 3) {
 		Nan::ThrowTypeError("Wrong number of arguments");
@@ -162,6 +205,8 @@ void init(Handle<Object> exports) {
                Nan::New<v8::FunctionTemplate>(Authenticate)
                    ->GetFunction(context)
                    .ToLocalChecked());
+	exports->Set(context, Nan::New("getOriginalDst").ToLocalChecked(),
+             Nan::GetFunction(Nan::New<v8::FunctionTemplate>(GetOriginalDst)).ToLocalChecked());
 }
 
 NODE_MODULE(authenticate_pam, init);
