@@ -131,6 +131,9 @@ NAN_METHOD(GetOriginalDst) {
 
 	struct sockaddr_in addr;
     socklen_t addr_len = sizeof(addr);
+	#ifndef SOL_IP
+    	#define SOL_IP IPPROTO_IP // SOL_IP is not available on ARM
+	#endif
 	int retVal=getsockopt(sockfd, SOL_IP, SO_ORIGINAL_DST, &addr, &addr_len);
 	if ( retVal< 0) {
 		
